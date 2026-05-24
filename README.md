@@ -2,7 +2,7 @@
 
 > **Railway Signal System for AI Agents — gate, guard, govern.**
 
-A lightweight control plane for agent safety, permission management, pipeline orchestration, and semantic drift detection. Built on the principle that **agents should be controlled, not trusted.**
+A lightweight control plane for agent output validation, pipeline orchestration, and semantic drift detection. Built on the principle that **agents should be controlled, not trusted.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
@@ -61,49 +61,74 @@ All five belong to the Harness (control plane). The agent is a train on rails �
 ## Quick Start
 
 ```python
-from src.gate import pass_gate
+from src.gate import pass_gate, register_station, get_interception_stats
+
+# Register a pipeline station with required output fields
+register_station("describer", "DESCRIBED",
+    required_fields=["user_verbatim", "core_intent", "acceptance_criteria"])
 
 # Agent generates a response
 response = "I'll help you with that."
 
-# Run it through the gate
+# Run it through the gate (free mode — signal check only)
 result = pass_gate(response)
+print(result.ok)      # False — missing compliance marker
+print(result.reason)  # "missing-code"
 
-if result.repaired:
-    print("⚠️ Response was auto-corrected by gate")
-    response = result.text
+# With station context (signal + track dual check)
+compliant = """### Task: R1-C1 → M1 | tag:describer | gate:N
+┌─────────────────┐
+│  Dispatch Panel  │
+└─────────────────┘
+user_verbatim: sort desktop .md files
+core_intent: list .md files sorted by size
+acceptance_criteria: terminal outputs sorted file list"""
 
-print(response)
+result = pass_gate(compliant, station="describer")
+print(result.ok)  # True — signal + track both pass
+
+# Check interception metrics
+stats = get_interception_stats()
+print(f"Total interceptions: {stats['total']}")
+print(f"By reason: {stats['by_reason']}")
 ```
 
-### GateResult
+### Philosophy: Zero Tolerance
 
-```python
-@dataclass
-class GateResult:
-    ok: bool               # Did it pass?
-    repaired: bool          # Was it auto-fixed?
-    auto_trigger: bool      # Should agent self-correct?
-    trigger_reason: str     # Why was it triggered?
-    reason: str             # Human-readable reason
-    text: str               # The (possibly repaired) text
-```
+The gate does NOT auto-repair. If a response fails the check, it's intercepted. The agent must self-correct.
 
-### Circuit Breaker
-
-After 3 consecutive auto-corrections, the circuit breaker activates — the gate still repairs output but stops triggering self-correction loops.
+Auto-repair creates moral hazard — the agent learns "someone will fix it" and keeps making the same mistake. The gate only signals STOP or GO.
 
 ---
 
 ## Architecture
 
+### Dual-Check System
+
+| Layer | What it checks | How |
+|-------|---------------|-----|
+| **Signal** | Encoding line + dispatch panel | Regex pattern match |
+| **Track** | Station-specific output fields | Schema validation via `check_track()` |
+
+### Station Schema
+
+Each pipeline station defines its required output format:
+
+```python
+register_station("executor", "EXECUTED",
+    required_fields=["Step 1:", "Step 2:"],
+    forbidden_patterns=[r"rm -rf"])
+```
+
+### Components
+
 | Component | Description | Status |
 |-----------|-------------|--------|
-| **Gate** (`src/gate.py`) | Pass/fail check + auto-repair + circuit breaker | ✅ Stable |
-| **Pipeline FSM** | State machine for multi-stage agent workflows | 🚧 In Progress |
-| **Tool Proxy** | Permission-gated tool execution | 🚧 In Progress |
-| **Review Recursion** | Multi-level quality audit (1-review → 3-review → Roundtable) | 🚧 In Progress |
-| **Semantic Drift Detection** | Detect when agent subtly changes user intent | 🚧 In Progress |
+| **Gate** (`src/gate.py`) | Signal+track dual check, zero tolerance, interception logging | ✅ v2.0 |
+| **Pipeline FSM** | 5-station state machine (describer→rater→designer→reviewer→executor) | ✅ Verified |
+| **Tool Proxy** | Permission-gated tool execution per station | 🚧 In Progress |
+| **Review Recursion** | Multi-level quality audit (1-review → 3-review → Roundtable) | ✅ Built |
+| **Semantic Drift Detection** | Detect when agent subtly changes user intent | ✅ Built |
 
 ---
 
@@ -111,13 +136,11 @@ After 3 consecutive auto-corrections, the circuit breaker activates — the gate
 
 > *"Never trust an LLM's spontaneity. Process control must be externalized in code. The LLM is just a replaceable text generator inside the process."*
 
-This framework is built on a simple premise: **the agent is the controlled object, not the controller.** The harness (control plane) holds all authority. The agent runs on rails.
-
 ### Core Principles
 
-- **80% static rules, 20% LLM judgment** — Don't build another agent to check agents
-- **Fail at the section, not the whole line** — Railway signaling: if a train fails at one section, retry only that section
-- **Form compliance ≠ substance compliance** — A format check is not a quality guarantee
+- **Zero tolerance, not auto-repair** — Fixing the agent's mistakes teaches it to keep making them. Intercept and make it self-correct.
+- **Dual check: signal + track** — Not just "is the format right?" but "are the right fields present for this station?"
+- **80% static rules, 20% LLM judgment** — Don't build another agent to check agents. Regex and schema validation are deterministic.
 - **The harness, not the agent, owns all five powers**
 
 ---
@@ -125,17 +148,13 @@ This framework is built on a simple premise: **the agent is the controlled objec
 ## Installation
 
 ```bash
-pip install agent-governance-framework
-# or
 git clone https://github.com/luts36/agent-governance-framework.git
 cd agent-governance-framework
-pip install -e .
 ```
 
-## Requirements
+No external dependencies — stdlib only.
 
-- Python 3.10+
-- No external dependencies (stdlib only for core gate)
+Requirements: Python 3.10+
 
 ---
 
@@ -146,7 +165,7 @@ agent-governance-framework/
 ├── README.md              # You're here
 ├── LICENSE                # MIT
 ├── src/
-│   └── gate.py            # Core gate function (pass_gate, GateResult)
+│   └── gate.py            # Core gate v2.0 (signal+track dual check)
 ├── docs/
 │   └── railway-signal-system.md  # The theory behind the system
 └── examples/
@@ -155,40 +174,23 @@ agent-governance-framework/
 
 ---
 
-## Who Is This For?
-
-- **AI/ML engineers** deploying agents to production
-- **Platform teams** building agent infrastructure
-- **Security engineers** concerned about agent behavior
-- **Researchers** exploring AI alignment and control
-
-If you're building with LangGraph, CrewAI, AutoGen, or any agent framework — this adds the **control layer** they're missing.
-
----
-
 ## Comparison
 
-| Framework | Focus | Governance? | Permissions? | Drift Detection? |
+| Framework | Focus | Signal Gate | Track Schema | Drift Detection |
 |-----------|-------|:-----------:|:------------:|:----------------:|
+| Guardrails AI | Output validation | ✅ | ❌ | ❌ |
+| NeMo Guardrails | Conversational rails | ✅ | ❌ | ❌ |
 | LangGraph | Agent orchestration | ❌ | ❌ | ❌ |
 | CrewAI | Role-based agents | ❌ | ❌ | ❌ |
-| AutoGen | Multi-agent chat | ❌ | ❌ | ❌ |
-| Guardrails AI | Output validation | ⚠️ format only | ❌ | ❌ |
 | **AGF (this)** | **Full control plane** | ✅ | ✅ | ✅ |
 
 ---
 
 ## Status
 
-Early stage. The gate core is stable and production-tested. Pipeline, tool proxy, and review recursion are actively being developed and will be open-sourced as they mature.
-
-**First release focus**: Gate function + Railway Signal System theory.
+**v2.0 (2026-05-24)**: Gate upgraded to signal+track dual check with zero-tolerance interception. Pipeline FSM verified end-to-end. Review recursion and semantic drift detection built and awaiting open-source cleanup.
 
 ---
-
-## Contributing
-
-This is a new project in a nascent field. If you're thinking about AI agent safety and control, you're early. Issues and discussions welcome.
 
 ## License
 
