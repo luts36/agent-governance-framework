@@ -21,24 +21,24 @@ We model agent control after railway safety systems — the most reliable human-
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   RAILWAY SIGNAL SYSTEM                    │
+│                   RAILWAY SIGNAL SYSTEM                  │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│   Control Tower (You)                                    │
+│   Control Tower (You)                                   │
 │        │                                                │
-│   ┌────┴────┐                                           │
-│   │   CLI   │ ← Your control console                    │
-│   └────┬────┘                                           │
+│   ┌────┴────┐                                          │
+│   │   CLI   │ ← Your control console                   │
+│   └────┬────┘                                          │
 │        │                                                │
 │   ┌────┴──────────────────────────────────┐            │
-│   │              GATE (Signal Lights)       │            │
-│   │  Pre-Gate → In-Gate → Post-Gate → Final │            │
+│   │              GATE (Signal Lights)      │            │
+│   │  Pre-Gate → In-Gate → Post-Gate → Final│           │
 │   └────┬──────────────────────────────────┘            │
 │        │                                                │
-│   ┌────┴────┐                                           │
-│   │  AGENT  │ ← The train. Runs on rails you define.    │
-│   │ (Train) │   Cannot choose its own track.            │
-│   └─────────┘                                           │
+│   ┌────┴────┐                                          │
+│   │  AGENT  │ ← The train. Runs on rails you define.   │
+│   │ (Train) │   Cannot choose its own track.           │
+│   └─────────┘                                          │
 │                                                         │
 │   The train doesn't control the signals.                │
 │   The control tower does.                               │
@@ -46,152 +46,239 @@ We model agent control after railway safety systems — the most reliable human-
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Five Powers the Agent Does NOT Have
+### Key Features
 
-1. ❌ Choose which skill/tool to use
-2. ❌ Grant itself permissions
-3. ❌ Submit its own state
-4. ❌ Call real tools directly
-5. ❌ Trigger downstream actions
+**v4.2 — Production Ready**
 
-All five belong to the Harness (control plane). The agent is a train on rails — it only moves when signaled.
-
----
-
-## Quick Start
-
-```python
-from src.gate import pass_gate, register_station, get_interception_stats
-
-# Register a pipeline station with required output fields
-register_station("describer", "DESCRIBED",
-    required_fields=["user_verbatim", "core_intent", "acceptance_criteria"])
-
-# Agent generates a response
-response = "I'll help you with that."
-
-# Run it through the gate (free mode — signal check only)
-result = pass_gate(response)
-print(result.ok)      # False — missing compliance marker
-print(result.reason)  # "missing-code"
-
-# With station context (signal + track dual check)
-compliant = """### Task: R1-C1 → M1 | tag:describer | gate:N
-┌─────────────────┐
-│  Dispatch Panel  │
-└─────────────────┘
-user_verbatim: sort desktop .md files
-core_intent: list .md files sorted by size
-acceptance_criteria: terminal outputs sorted file list"""
-
-result = pass_gate(compliant, station="describer")
-print(result.ok)  # True — signal + track both pass
-
-# Check interception metrics
-stats = get_interception_stats()
-print(f"Total interceptions: {stats['total']}")
-print(f"By reason: {stats['by_reason']}")
-```
-
-### Philosophy: Zero Tolerance
-
-The gate does NOT auto-repair. If a response fails the check, it's intercepted. The agent must self-correct.
-
-Auto-repair creates moral hazard — the agent learns "someone will fix it" and keeps making the same mistake. The gate only signals STOP or GO.
-
----
+- **Pure Interception**: Gate blocks non-compliant outputs, logs reasons, suggests fixes
+- **Measurement Logging**: Every interception logged with reason, station, timestamp
+- **Reminder Language**: "Remind" instead of "punish" — interception is context injection for next turn
+- **Station Schemas**: Output validation per pipeline station
+- **Auto-Dispatcher**: Fully automated compliance engine (no manual triggers)
 
 ## Architecture
 
-### Dual-Check System
-
-| Layer | What it checks | How |
-|-------|---------------|-----|
-| **Signal** | Encoding line + dispatch panel | Regex pattern match |
-| **Track** | Station-specific output fields | Schema validation via `check_track()` |
-
-### Station Schema
-
-Each pipeline station defines its required output format:
-
-```python
-register_station("executor", "EXECUTED",
-    required_fields=["Step 1:", "Step 2:"],
-    forbidden_patterns=[r"rm -rf"])
+```
+┌─────────────────────────────────────────────────────────┐
+│                Agent Governance Framework                │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌──────────────┐    ┌──────────────┐                  │
+│  │    Gate      │    │  Dispatcher  │                  │
+│  │  (v4.2)     │    │  (Auto)      │                  │
+│  └──────┬───────┘    └──────┬───────┘                  │
+│         │                   │                          │
+│         ▼                   ▼                          │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │              Rules Engine                        │  │
+│  │  • Signal checks (encoding lines, panels)        │  │
+│  │  • Schema validation (per-station output)        │  │
+│  │  • Interception logging                          │  │
+│  │  • Auto-remediation suggestions                  │  │
+│  └─────────────────────────────────────────────────┘  │
+│         │                                              │
+│         ▼                                              │
+│  ┌──────────────┐                                     │
+│  │    Agent     │ ← Runs on rails you define          │
+│  │   (Train)    │   Cannot choose its own track       │
+│  └──────────────┘                                     │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
 ```
 
-### Components
+## Quick Start
 
-| Component | Description | Status |
-|-----------|-------------|--------|
-| **Gate** (`src/gate.py`) | Signal+track dual check, zero tolerance, interception logging | ✅ v2.0 |
-| **Pipeline FSM** | 5-station state machine (describer→rater→designer→reviewer→executor) | ✅ Verified |
-| **Tool Proxy** | Permission-gated tool execution per station | 🚧 In Progress |
-| **Review Recursion** | Multi-level quality audit (1-review → 3-review → Roundtable) | ✅ Built |
-| **Semantic Drift Detection** | Detect when agent subtly changes user intent | ✅ Built |
-
----
-
-## Philosophy
-
-> *"Never trust an LLM's spontaneity. Process control must be externalized in code. The LLM is just a replaceable text generator inside the process."*
-
-### Core Principles
-
-- **Zero tolerance, not auto-repair** — Fixing the agent's mistakes teaches it to keep making them. Intercept and make it self-correct.
-- **Dual check: signal + track** — Not just "is the format right?" but "are the right fields present for this station?"
-- **80% static rules, 20% LLM judgment** — Don't build another agent to check agents. Regex and schema validation are deterministic.
-- **The harness, not the agent, owns all five powers**
-
----
-
-## Installation
+### Installation
 
 ```bash
 git clone https://github.com/luts36/agent-governance-framework.git
 cd agent-governance-framework
+pip install -r requirements.txt
 ```
 
-No external dependencies — stdlib only.
+### Basic Usage
 
-Requirements: Python 3.10+
+```python
+from src.gate import pass_gate, get_interception_stats
 
----
+# Check agent output
+result = pass_gate(
+    "### 任务编码：R1-C2 → M3 | tag:review | gate:Y\n\nTask completed successfully.",
+    station="review"
+)
 
-## Project Structure
+if result.passed:
+    print("✅ Output compliant")
+else:
+    print(f"❌ Blocked: {result.reason}")
+    print(f"💡 Fix: {result.fix_suggestion}")
+
+# Get interception statistics
+stats = get_interception_stats()
+print(f"Total interceptions: {stats['total']}")
+```
+
+### Auto-Dispatcher
+
+The dispatcher runs automatically, consuming cron job outputs:
+
+```python
+from src.dispatcher import Dispatcher
+
+# Initialize dispatcher
+dispatcher = Dispatcher()
+
+# Process latest outputs
+actions = dispatcher.process()
+for action in actions:
+    print(f"Action: {action['type']} - {action['message']}")
+```
+
+## Gate System (v4.2)
+
+### Four-Layer Gate
 
 ```
-agent-governance-framework/
-├── README.md              # You're here
-├── LICENSE                # MIT
-├── src/
-│   └── gate.py            # Core gate v2.0 (signal+track dual check)
-├── docs/
-│   └── railway-signal-system.md  # The theory behind the system
-└── examples/
-    └── basic_usage.py     # Quick examples
+Pre-Gate → In-Gate → Post-Gate → Final
+   │          │          │          │
+   ▼          ▼          ▼          ▼
+  Entry    Tool Use    Output    Departure
+  Check    Permission  Schema    Validation
 ```
 
----
+### Signal Checks
+
+| Check | Description | Block Condition |
+|-------|-------------|-----------------|
+| R0 | Encoding line present | Missing or malformed |
+| R1 | Panel visible | Hidden or omitted |
+| R2 | Station schema match | Fields mismatch |
+| R3 | Interception logged | Repeat violation |
+
+### Interception Logging
+
+Every interception is logged to `~/.agent-governance/logs/gate-interceptions.jsonl`:
+
+```json
+{
+  "timestamp": "2026-05-30T14:30:00Z",
+  "station": "review",
+  "reason": "missing_encoding_line",
+  "input_hash": "abc123",
+  "fix_suggestion": "Add: ### 任务编码：R?-C? → M?"
+}
+```
+
+## Dispatcher (Auto-Compliance)
+
+The dispatcher consumes outputs from 4 cron jobs and automatically:
+
+- **Compliance Scan**: Checks agent behavior patterns
+- **Config Hash**: Detects configuration drift
+- **TRCM Audit**: Validates TRCM compliance
+- **Friend Log**: Monitors interaction patterns
+
+### Auto-Actions
+
+| Condition | Action |
+|-----------|--------|
+| Compliance violation | Auto-encode + suggest roundtable |
+| Config drift | Alert + rollback suggestion |
+| TRCM non-compliance | Block + remediation |
+| Pattern anomaly | Log + investigate |
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Rules file location
+export AG_RULES_PATH=~/.agent-governance/rules.yaml
+
+# Station schemas
+export AG_SCHEMAS_PATH=~/.agent-governance/station-schemas.yaml
+
+# Log directory
+export AG_LOG_DIR=~/.agent-governance/logs
+```
+
+### Rules File
+
+```yaml
+rules:
+  R0:
+    pattern: "###\\s*任务编码[：:].*→?\\s*M(?P<m>\\d)"
+    fix: "### 任务编码：R?-C? → M? | tag:<标签> | gate:Y/N"
+  R1:
+    require_panel: true
+  R2:
+    schemas_dir: "station-schemas/"
+```
+
+## Ecosystem
+
+This project is part of the **AI Agent Governance** ecosystem:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  AI Agent Governance                     │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  agent-governance-framework    unified-inertia-theory   │
+│  (Process Governance)          (Cognitive Governance)    │
+│         │                            │                  │
+│         │                            │                  │
+│         ▼                            ▼                  │
+│  ┌──────────────┐            ┌──────────────┐          │
+│  │ Gate System  │            │ Inertia      │          │
+│  │ • Signal     │            │ • Detection  │          │
+│  │ • Schema     │            │ • Measurement│          │
+│  │ • Auto-fix   │            │ • Correction │          │
+│  └──────────────┘            └──────────────┘          │
+│                                                         │
+│  "Did the agent follow        "Is the agent stuck      │
+│   the process?"                in a pattern?"           │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Related Projects
+
+- **[unified-inertia-theory](https://github.com/luts36/unified-inertia-theory)**: Detect, measure, and correct AI Agent cognitive inertia
 
 ## Comparison
 
-| Framework | Focus | Signal Gate | Track Schema | Drift Detection |
-|-----------|-------|:-----------:|:------------:|:----------------:|
-| Guardrails AI | Output validation | ✅ | ❌ | ❌ |
-| NeMo Guardrails | Conversational rails | ✅ | ❌ | ❌ |
-| LangGraph | Agent orchestration | ❌ | ❌ | ❌ |
-| CrewAI | Role-based agents | ❌ | ❌ | ❌ |
-| **AGF (this)** | **Full control plane** | ✅ | ✅ | ✅ |
+| Feature | LangGraph Guardrails | NeMo Guardrails | This Framework |
+|---------|---------------------|-----------------|----------------|
+| Process enforcement | ❌ | ❌ | ✅ |
+| Signal system | ❌ | ❌ | ✅ |
+| Auto-dispatcher | ❌ | ❌ | ✅ |
+| Schema validation | ❌ | ❌ | ✅ |
+| Interception logging | ❌ | ❌ | ✅ |
+| Auto-remediation | ❌ | ❌ | ✅ |
 
----
+## Who is this for?
+
+- **AI Agent developers** building reliable autonomous systems
+- **MLOps engineers** monitoring agent behavior in production
+- **AI safety teams** establishing behavioral standards
+- **Enterprise teams** deploying agents in critical workflows
 
 ## Status
 
-**v2.0 (2026-05-24)**: Gate upgraded to signal+track dual check with zero-tolerance interception. Pipeline FSM verified end-to-end. Review recursion and semantic drift detection built and awaiting open-source cleanup.
-
----
+**v4.2** — Stable, production-ready
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT License — see [LICENSE](LICENSE) for details.
+
+## Citation
+
+```bibtex
+@software{agent_governance_framework,
+  title={Agent Governance Framework: Railway Signal System for AI Agents},
+  author={Agent Governance Framework Team},
+  year={2026},
+  url={https://github.com/luts36/agent-governance-framework}
+}
+```

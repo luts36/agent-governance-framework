@@ -1,14 +1,55 @@
+# Python
 __pycache__/
-*.pyc
-*.pyo
-.env
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
 .venv/
 venv/
-*.egg-info/
-dist/
-build/
-.DS_Store
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
 *.swp
 *.swo
-.idea/
-.vscode/
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+*.cache
+
+# Logs
+*.log
+
+# Agent Governance specific
+~/.agent-governance/
+logs/
+*.jsonl
